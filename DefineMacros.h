@@ -1,0 +1,4 @@
+#define _HANDSHAKEREQUEST 8
+#define _HANDSHAKERESPOND 9
+#define _PACKET 0
+#define _SEQMAX 10
