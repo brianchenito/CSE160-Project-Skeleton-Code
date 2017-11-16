@@ -343,9 +343,8 @@ implementation{
          }
          return j;
       }
-
-
-      return TOS_NODE_ID;
+      dbg(GENERAL_CHANNEL, "PATH GENERATION FAILURE, FALLING BACK TO FLOODING\n");
+      return AM_BROADCAST_ADDR;
    }
 
 
