@@ -1,0 +1,6 @@
+docker run -v //c/Users/Brian/Documents/GitHub/CSE160-Project-Skeleton-Code:/opt/tinyos-main/CSE160-Project-Skeleton-Code -ti tinyos
+
+cd() { builtin cd "$@" && ls; }
+
+
+make micaz sim

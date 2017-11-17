@@ -93,7 +93,7 @@ implementation{
 
    event void periodicTimer.fired(){
       if((rand() % 10)>5)return;
-      //dbg(GENERAL_CHANNEL, "FIRING PERIODIC \n");
+      dbg(FLOODING_CHANNEL, "FIRING PERIODIC \n");
       findNeighbors(); 
    }
 
@@ -153,7 +153,7 @@ implementation{
       keys=call neighborIDs.getKeys();
       for(i=0;i<call neighborIDs.size();i++){
          if(call neighborIDs.get(keys[i])+REFRESHINTERVAL<call periodicTimer.getNow()){
-            dbg(GENERAL_CHANNEL, "neighbor  %d has decayed \n", keys[i]);
+            dbg(ROUTING_CHANNEL, "neighbor  %d has decayed \n", keys[i]);
             call neighborIDs.remove(keys[i]);
          }
       }
@@ -224,7 +224,7 @@ implementation{
       if (dest==AM_BROADCAST_ADDR){
          dbg(NEIGHBOR_CHANNEL, "Handshake request from : %d\n", src);
 
-         //dbg(GENERAL_CHANNEL, "replying to flood-------: \n");
+         dbg(FLOODING_CHANNEL, "replying to flood-------: \n");
          if(call neighborIDs.contains(src)){
             call neighborIDs.remove(src);
             call neighborIDs.insert(src, call periodicTimer.getNow()); 
@@ -261,8 +261,8 @@ implementation{
       pathnode k;
       uint32_t* arr;
       if(!call adjacentmap.contains(dest)){
-         dbg(GENERAL_CHANNEL, "FAILURE TO GENERATE PATH\n");
-         return TOS_NODE_ID;
+         dbg(ROUTING_CHANNEL, "FAILURE TO GENERATE PATH\n");
+         return AM_BROADCAST_ADDR;
       }
       while(!call tentative.isEmpty()){
          call tentative.popback();
@@ -293,7 +293,7 @@ implementation{
          //precheck for full path
          if(parent.label==dest)
          {
-            dbg(GENERAL_CHANNEL, "FOUND DESTINATION, CLEARING TENTATIVE\n");
+            dbg(ROUTING_CHANNEL, "FOUND DESTINATION, CLEARING TENTATIVE\n");
             while(!call tentative.isEmpty()){
                call tentative.popback();
             }
@@ -328,14 +328,14 @@ implementation{
          }
       }
       if (parent.label==dest){
-         dbg(GENERAL_CHANNEL, "PATH GENERATED, WORKING BACK TO DETERMINE NEXTHOP\n");
+         dbg(ROUTING_CHANNEL, "PATH GENERATED, WORKING BACK TO DETERMINE NEXTHOP\n");
          j=dest;
          for(i=call confirmed.size()-1;i>=0;i--){
             temp=call confirmed.get(i);
             if (temp.label==j){
-               dbg(GENERAL_CHANNEL,"\t %d\n",j);
+               dbg(ROUTING_CHANNEL,"\t %d\n",j);
                if(temp.parent==TOS_NODE_ID){
-                  dbg(GENERAL_CHANNEL, "NEXTHOP: %d\n",j);
+                  dbg(ROUTING_CHANNEL, "NEXTHOP: %d\n",j);
                   break;
                }
                j=temp.parent;
@@ -343,7 +343,7 @@ implementation{
          }
          return j;
       }
-      dbg(GENERAL_CHANNEL, "PATH GENERATION FAILURE, FALLING BACK TO FLOODING\n");
+      dbg(ROUTING_CHANNEL, "PATH GENERATION FAILURE, FALLING BACK TO FLOODING\n");
       return AM_BROADCAST_ADDR;
    }
 
