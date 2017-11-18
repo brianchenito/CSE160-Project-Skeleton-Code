@@ -32,6 +32,9 @@ implementation {
     components new SimpleSendC(AM_PACK);
     Node.Sender -> SimpleSendC;
 
+    components new TransportC();
+    Node.Transport->TransportC;
+
     components CommandHandlerC;
     Node.CommandHandler -> CommandHandlerC;
 

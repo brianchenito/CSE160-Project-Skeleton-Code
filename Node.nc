@@ -26,6 +26,8 @@ module Node{
 
    uses interface SimpleSend as Sender;
 
+   uses interface Transport;
+
    uses interface CommandHandler;
 
    uses interface Hashmap<uint16_t> as neighborIDs;
@@ -51,6 +53,7 @@ implementation{
 
    event void Boot.booted(){
       call AMControl.start();
+      call Transport.start();
       LSPseq=0;
       findNeighbors();
       call periodicTimer.startPeriodic( 10000 );
