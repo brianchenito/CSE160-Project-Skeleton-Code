@@ -53,5 +53,8 @@ implementation {
     components new ListC(pathnode,100) as tent;
     Node.tentative -> tent;
 
+    components new ListC(pack, 100 ) as tcpInbox;
+    Node.inbox->tcpInbox;
+
 
 }

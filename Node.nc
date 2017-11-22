@@ -15,6 +15,7 @@
 #include "includes/protocol.h"
 #include "includes/linkState.h"
 #include "includes/pathnode.h"
+#include "includes/tcppayload.h"
 
 enum{REFRESHINTERVAL=50000};
 
@@ -37,10 +38,13 @@ module Node{
 
    uses interface List<pathnode> as confirmed;
    uses interface List<pathnode> as tentative;
+
+   uses interface List<pack> as inbox;
 }
 
 implementation{
    pack sendPackage;
+   uint16_t emphport;
    uint16_t LSPseq;
    // Prototypes
    void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t Protocol, uint16_t seq, uint8_t *payload, uint8_t length);
@@ -55,8 +59,9 @@ implementation{
       call AMControl.start();
       call Transport.start();
       LSPseq=0;
+      emphport=ROOT_SOCKET_PORT;
       findNeighbors();
-      call periodicTimer.startPeriodic( 10000 );
+      call periodicTimer.startPeriodic( 5000 );
       dbg(GENERAL_CHANNEL, "Booted\n");
    }
 
@@ -73,9 +78,9 @@ implementation{
 
    event message_t* Receive.receive(message_t* msg, void* payload, uint8_t len){
       //dbg(GENERAL_CHANNEL, "Packet Received\n");
+      uint16_t next;
       if(len==sizeof(pack)){
          pack* myMsg=(pack*) payload;
-         linkState unpacked;
          // run protocol specific commands
          switch(myMsg->protocol){
             case PROTOCOL_PING:
@@ -87,6 +92,20 @@ implementation{
             case PROTOCOL_LINKEDSTATE:
                recieveLinkState(myMsg->TTL,myMsg->src,myMsg->dest,myMsg->payload,myMsg->seq);
                break;
+            case PROTOCOL_TCP:
+            if(myMsg->dest==TOS_NODE_ID)
+               {
+                  dbg(GENERAL_CHANNEL, "TCP PACK RECIEVED BY DESTINATION\n");
+                  call Transport.receive(myMsg);
+               }
+            else
+               {
+               next=nextHop(myMsg->dest);
+               dbg(GENERAL_CHANNEL, "TCP PACK RETRANSMITTING TO %d \n",next);
+               call Sender.send(*myMsg, next);// MAYBE FIX
+               }
+            break;   
+
          }
          return msg;
       }
@@ -95,7 +114,8 @@ implementation{
    }
 
    event void periodicTimer.fired(){
-      if((rand() % 10)>5)return;
+
+      if((rand() % 10)>2)return;
       dbg(FLOODING_CHANNEL, "FIRING PERIODIC \n");
       findNeighbors(); 
    }
@@ -130,9 +150,51 @@ implementation{
 
    event void CommandHandler.printDistanceVector(){}
 
-   event void CommandHandler.setTestServer(){}
+   event void CommandHandler.setTestServer(){
+      
+      socket_t listener;
+      socket_addr_t listen_addr;
 
-   event void CommandHandler.setTestClient(){}
+      dbg(GENERAL_CHANNEL, "converting to test server \n");
+
+      listen_addr.port=80;
+      listen_addr.addr=TOS_NODE_ID;
+      
+      listener= call Transport.socket();
+      
+      if(call Transport.bind(listener,listen_addr)==FAIL)return;
+
+      if(call Transport.listen(listener)==FAIL)return;
+      dbg(GENERAL_CHANNEL, "Successful setup of test server \n");
+   }
+
+   event void CommandHandler.setTestClient(uint16_t destination, uint16_t destport,uint16_t messagesize){
+      uint16_t next;
+      socket_t fd;
+      socket_addr_t fd_addr;
+      socket_addr_t dest_addr;
+      tcppayload payload;
+
+      dest_addr.port=destport;
+      dest_addr.addr=destination;
+
+      dbg(GENERAL_CHANNEL, "converting to test client and messaging target %d on port %d \n",destination,destport);
+
+      fd_addr.port=emphport;
+      emphport+=1;
+      fd_addr.addr=TOS_NODE_ID;
+      fd= call Transport.socket();
+
+      if(call Transport.bind(fd,fd_addr)==FAIL)return;
+      dbg(GENERAL_CHANNEL, "ready to begin handshake\n");
+      payload= call Transport.connect(fd,dest_addr ); 
+      next=nextHop(dest_addr.addr);
+      makePack(&sendPackage, TOS_NODE_ID,dest_addr.addr,0,PROTOCOL_TCP,0,(uint8_t*)&payload,PACKET_MAX_PAYLOAD_SIZE );
+      call Sender.send(sendPackage,next );
+     
+
+
+   }
 
    event void CommandHandler.setAppServer(){}
 

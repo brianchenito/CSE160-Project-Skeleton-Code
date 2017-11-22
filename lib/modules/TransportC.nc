@@ -12,7 +12,7 @@ implementation
   components new TransportP();
   Transport=TransportP.Transport;
 
-  components new HashmapC(socket_store_t*,MAX_NUM_OF_SOCKETS) as sockets;
+  components new HashmapC(socket_store_t,MAX_NUM_OF_SOCKETS) as sockets;
   TransportP.sockets->sockets;
 
 }

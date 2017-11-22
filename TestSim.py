@@ -12,6 +12,8 @@ class TestSim:
     CMD_PING = 0
     CMD_NEIGHBOR_DUMP = 1
     CMD_ROUTE_DUMP=3
+    CMD_TEST_SERVER=5
+    CMD_TEST_CLIENT=4
 
     # CHANNELS - see includes/channels.h
     COMMAND_CHANNEL="command";
@@ -124,21 +126,28 @@ class TestSim:
         print 'Adding Channel', channelName;
         self.t.addChannel(channelName, out);
 
+    def setTestServer(self,destination):
+        self.sendCMD(self.CMD_TEST_SERVER, destination, "test server command");
+    
+    def setTestClient(self,source,destination, destport, msgsz):
+        self.sendCMD(self.CMD_TEST_CLIENT,source, "{0}{1}{2}".format(chr(destination),chr(destport), chr(msgsz)));
+
 def main():
     s = TestSim();
     s.runTime(10);
     s.loadTopo("long_line.topo");
-    s.loadNoise("no_noise.txt");
+    s.loadNoise("moderate_noise.txt");
     s.bootAll();
     s.addChannel(s.COMMAND_CHANNEL);
     s.addChannel(s.GENERAL_CHANNEL);
-    #s.addChannel(s.ROUTING_CHANNEL);
 
     s.runTime(20);
-    s.ping(1, 2, "Hello, World");
-    s.runTime(10);
-    s.ping(1, 10, "Hi!");
+    s.setTestServer(2);
     s.runTime(20);
+    s.setTestClient(5,2,80,60);
+    s.runTime(20);
+    # s.ping(1,9,"hello");
+    # s.runTime(20);
 
 if __name__ == '__main__':
     main()
