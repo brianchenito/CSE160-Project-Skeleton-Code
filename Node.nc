@@ -55,10 +55,17 @@ implementation{
    uint16_t nextHop(uint16_t dest);
    void recivePingReply(uint16_t src);
 
+   //TCP
+   uint16_t acktrack;
+   uint16_t succsend;
+   uint16_t maxval;
+
    event void Boot.booted(){
       call AMControl.start();
       call Transport.start();
       LSPseq=0;
+      acktrack=0;
+      succsend=0;
       emphport=ROOT_SOCKET_PORT;
       findNeighbors();
       call periodicTimer.startPeriodic( 5000 );
@@ -79,31 +86,118 @@ implementation{
    event message_t* Receive.receive(message_t* msg, void* payload, uint8_t len){
       //dbg(GENERAL_CHANNEL, "Packet Received\n");
       uint16_t next;
+      tcppayload* tcpunpack;
+      tcppayload sendtcp;
+      socket_t socketid;
+      socket_store_t socketinfo;
+      socket_addr_t sockaddr;
+
       if(len==sizeof(pack)){
          pack* myMsg=(pack*) payload;
          // run protocol specific commands
          switch(myMsg->protocol){
             case PROTOCOL_PING:
-               receivePing(myMsg->src, myMsg->dest, myMsg->payload);
-               break;
+            receivePing(myMsg->src, myMsg->dest, myMsg->payload);
+            break;
             case PROTOCOL_PINGREPLY:
-               recivePingReply(myMsg->src);
-               break;
+            recivePingReply(myMsg->src);
+            break;
             case PROTOCOL_LINKEDSTATE:
-               recieveLinkState(myMsg->TTL,myMsg->src,myMsg->dest,myMsg->payload,myMsg->seq);
-               break;
+            recieveLinkState(myMsg->TTL,myMsg->src,myMsg->dest,myMsg->payload,myMsg->seq);
+            break;
             case PROTOCOL_TCP:
             if(myMsg->dest==TOS_NODE_ID)
-               {
-                  dbg(GENERAL_CHANNEL, "TCP PACK RECIEVED BY DESTINATION\n");
-                  call Transport.receive(myMsg);
+            {
+               dbg(GENERAL_CHANNEL, "TCP PACK RECIEVED BY DESTINATION\n");
+               tcpunpack=myMsg->payload;
+                  //call Transport.receive(myMsg);
+               switch(tcpunpack->flag){
+                  case FLAG_SYN:
+                     dbg(GENERAL_CHANNEL, "RECIEVED SYN, CHECKING FOR LISTENER SOCK \n");
+                     socketid=call Transport.accept(call Transport.getSock(tcpunpack->destport));
+                     if (socketid ==NULL){
+                        dbg(GENERAL_CHANNEL, "ERROR,NO LISTENER AT SPECIFIED PORT \n");
+                        return msg;
+                     }
+                     dbg(GENERAL_CHANNEL, "SERVER ACCEPTED, FIRING BACK SYN ACK WITH SYNC DATA \n");
+                     sendtcp.flag=FLAG_SYN_ACK;
+                     sendtcp.sourceport=call Transport.getPort(socketid);
+                     sendtcp.destport=tcpunpack->sourceport;
+                     sendtcp.seq=rand() % 1000;
+                     sendtcp.ack=0;
+                     sendtcp.windowsize=1;
+                     next=nextHop(myMsg->src);
+                     makePack(&sendPackage, TOS_NODE_ID,myMsg->src,0,PROTOCOL_TCP,0,(uint8_t*)&sendtcp,PACKET_MAX_PAYLOAD_SIZE );
+                     call Sender.send(sendPackage,next);
+                     break;
+                  case FLAG_SYN_ACK:
+                     dbg(GENERAL_CHANNEL, "RECIEVED SYN_ACK, CHECKING FOR AND CONFIGURING CLIENT CONNECT \n");
+                     socketid=call Transport.getSock(tcpunpack->destport);
+                     if(socketid==NULL){
+                        dbg(GENERAL_CHANNEL, "INVALID SYN_ACK RECIEVED, IGNORING \n");
+                        break;
+                     }
+                     sockaddr.port=tcpunpack->sourceport;
+                     sockaddr.addr=myMsg->src;
+                     call Transport.establish(socketid,sockaddr);
+                     dbg(GENERAL_CHANNEL, "ESTABISHED CONNECT WITH NODE %d AT PORT %d, FIRING BACK ACK \n", myMsg->src, tcpunpack->sourceport);
+                     sendtcp.flag=FLAG_ACK;
+                     sendtcp.sourceport=socketid;
+                     sendtcp.destport=tcpunpack->sourceport;
+                     sendtcp.seq=tcpunpack->seq+1;
+                     sendtcp.ack=0;
+                     sendtcp.windowsize=tcpunpack->windowsize;
+
+                     next=nextHop(myMsg->src);
+                     makePack(&sendPackage, TOS_NODE_ID,myMsg->src,0,PROTOCOL_TCP,0,(uint8_t*)&sendtcp,PACKET_MAX_PAYLOAD_SIZE );
+                     call Sender.send(sendPackage,next);
+                     dbg(GENERAL_CHANNEL, "FIRED OFF FINAL HANDSHAKE ACK\n");
+
+                     sendtcp.flag=FLAG_FRAME;
+                     sendtcp.seq=tcpunpack->seq+2;
+                     sendtcp.data=0;
+
+                     makePack(&sendPackage, TOS_NODE_ID,myMsg->src,0,PROTOCOL_TCP,0,(uint8_t*)&sendtcp,PACKET_MAX_PAYLOAD_SIZE );
+                     call Sender.send(sendPackage,next);
+                     dbg(GENERAL_CHANNEL, "FIRED OFF FIRST DATA FRAME\n");
+
+                     break;
+                  case FLAG_ACK:
+                     dbg(GENERAL_CHANNEL, "RECIEVED ACK \n");
+                     socketid=call Transport.getSock(tcpunpack->destport);
+                     if(socketid==NULL){
+                        dbg(GENERAL_CHANNEL, "INVALID ACK RECIEVED, IGNORING \n");
+                        break;
+                     }
+                     if (tcpunpack->ack==0){
+                        sockaddr.port=tcpunpack->sourceport;
+                        sockaddr.addr=myMsg->src;
+                        call Transport.establish(socketid,sockaddr);
+                     }
+                     // else if(tcpunpack->ack=(succsend+1))
+                     // {
+
+                     // }
+                     break;
+                  case FLAG_FRAME:
+                  
+                     dbg(GENERAL_CHANNEL, "-----\t\tRECIEVED FRAME WITH DATA %d \n", tcpunpack->data);
+
+                     break;
+                  case FLAG_FIN:
+                     dbg(GENERAL_CHANNEL, "RECIEVED FIN \n");
+                     break;
+                  case FLAG_FIN_ACK:
+                     dbg(GENERAL_CHANNEL, "RECIEVED FIN_ACK \n");
+                     break;
                }
+            }
             else
-               {
+            {
                next=nextHop(myMsg->dest);
                dbg(GENERAL_CHANNEL, "TCP PACK RETRANSMITTING TO %d \n",next);
                call Sender.send(*myMsg, next);// MAYBE FIX
-               }
+            }
             break;   
 
          }
@@ -151,7 +245,7 @@ implementation{
    event void CommandHandler.printDistanceVector(){}
 
    event void CommandHandler.setTestServer(){
-      
+
       socket_t listener;
       socket_addr_t listen_addr;
 
@@ -161,11 +255,21 @@ implementation{
       listen_addr.addr=TOS_NODE_ID;
       
       listener= call Transport.socket();
+      if (listener==NULL){
+         dbg(GENERAL_CHANNEL, "FAILURE TO GET SOCKET\n");
+         return;
+      }
       
-      if(call Transport.bind(listener,listen_addr)==FAIL)return;
+      if(call Transport.bind(listener,listen_addr)==FAIL){
+         dbg(GENERAL_CHANNEL, "FAILURE TO BIND\n");
+         return;
+      }
 
-      if(call Transport.listen(listener)==FAIL)return;
-      dbg(GENERAL_CHANNEL, "Successful setup of test server \n");
+      if(call Transport.listen(listener)==FAIL){
+         dbg(GENERAL_CHANNEL, "FAILURE TO SET AS LISTENER\n");
+         return;
+      }
+      dbg(GENERAL_CHANNEL, "------Successful setup of test server \n");
    }
 
    event void CommandHandler.setTestClient(uint16_t destination, uint16_t destport,uint16_t messagesize){
@@ -178,20 +282,30 @@ implementation{
       dest_addr.port=destport;
       dest_addr.addr=destination;
 
-      dbg(GENERAL_CHANNEL, "converting to test client and messaging target %d on port %d \n",destination,destport);
+      maxval=messagesize;
+
+      dbg(GENERAL_CHANNEL, "converting to test client and messaging target node %d on port %d \n",destination,destport);
 
       fd_addr.port=emphport;
       emphport+=1;
       fd_addr.addr=TOS_NODE_ID;
       fd= call Transport.socket();
+      if(fd==NULL){
+         dbg(GENERAL_CHANNEL, "FAILURE TO GET SOCKET\n");
+         return;
+      }
 
-      if(call Transport.bind(fd,fd_addr)==FAIL)return;
-      dbg(GENERAL_CHANNEL, "ready to begin handshake\n");
+      if(call Transport.bind(fd,fd_addr)==FAIL){
+         dbg(GENERAL_CHANNEL, "BIND FAILURE\n");
+         return;
+      }
+      dbg(GENERAL_CHANNEL, "-----client ready to begin handshake\n");
       payload= call Transport.connect(fd,dest_addr ); 
       next=nextHop(dest_addr.addr);
       makePack(&sendPackage, TOS_NODE_ID,dest_addr.addr,0,PROTOCOL_TCP,0,(uint8_t*)&payload,PACKET_MAX_PAYLOAD_SIZE );
+      dbg(GENERAL_CHANNEL, "TCP SYN FIRING TO %d\n",next);
       call Sender.send(sendPackage,next );
-     
+
 
 
    }

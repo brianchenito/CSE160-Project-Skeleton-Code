@@ -13,6 +13,8 @@ implementation
   Transport=TransportP.Transport;
 
   components new HashmapC(socket_store_t,MAX_NUM_OF_SOCKETS) as sockets;
+  components new HashmapC(socket_t,MAX_NUM_OF_SOCKETS) as boundports;
+  TransportP.boundports->boundports;
   TransportP.sockets->sockets;
 
 }

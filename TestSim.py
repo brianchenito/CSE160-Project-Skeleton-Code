@@ -144,7 +144,7 @@ def main():
     s.runTime(20);
     s.setTestServer(2);
     s.runTime(20);
-    s.setTestClient(5,2,80,60);
+    s.setTestClient(5,2,80,60);#client addr, serv addr, serv port, msgsize
     s.runTime(20);
     # s.ping(1,9,"hello");
     # s.runTime(20);

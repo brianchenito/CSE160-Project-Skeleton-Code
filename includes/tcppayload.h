@@ -8,7 +8,7 @@ enum
 	FLAG_ACK=3,
 	FLAG_FRAME=4,
 	FLAG_FIN=5,
-	FLAG_ACK=6,
+	FLAG_FIN_ACK=6,
 
 };
 typedef nx_struct tcppayload

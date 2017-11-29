@@ -16,8 +16,27 @@
  */
 
 interface Transport{
-
+    /**
+     * Initiate a transport component.
+     */
     command void start();
+
+    /**
+     * retrieve socket id from port.
+     * @param
+     */
+    command socket_t getSock(socket_port_t port);
+
+
+    /**
+     * retrieve port from socket id
+      */
+    command socket_port_t getPort(socket_t sock);
+
+    /**
+     * Switch socket to establised with target address 
+     */
+    command error_t establish(socket_t fd, socket_addr_t dest);
 
    /**
     * Get a socket if there is one available.
