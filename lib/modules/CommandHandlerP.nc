@@ -77,6 +77,17 @@ implementation{
                 dbg(COMMAND_CHANNEL, "Command Type: Test Server\n");
                 signal CommandHandler.setTestServer();
                 break;
+            case CMD_ALLCHAT:
+                dbg(COMMAND_CHANNEL, "Command Type: Allchat\n");
+                signal CommandHandler.allChat(buff);
+                break;
+            case CMD_WHISPER:
+                dbg(COMMAND_CHANNEL, "Command Type: Whisper\n");
+                signal CommandHandler.whisper(buff[0],buff);
+                break;
+            case CMD_USER_DUMP:
+                dbg(COMMAND_CHANNEL, "Command Type: Username Dump\n");
+                break;
 
             default:
                 dbg(COMMAND_CHANNEL, "CMD_ERROR: \"%d\" does not match any known commands.\n", msg->id);

@@ -15,6 +15,10 @@ class TestSim:
     CMD_TEST_SERVER=5
     CMD_TEST_CLIENT=4
 
+    CMD_ALLCHAT=7
+    CMD_WHISPER=8
+    CMD_USER_DUMP=10
+
     # CHANNELS - see includes/channels.h
     COMMAND_CHANNEL="command";
     GENERAL_CHANNEL="general";
@@ -129,9 +133,19 @@ class TestSim:
     def setTestServer(self,destination):
         self.sendCMD(self.CMD_TEST_SERVER, destination, "test server command");
     
-    def setTestClient(self,source,destination=1, destport=80, msgsz=14):
+    def setTestClient(self,source,destination=1, destport=41, msgsz=14):
 
         self.sendCMD(self.CMD_TEST_CLIENT,source, "{0}{1}{2}".format(chr(destination),chr(destport), chr(msgsz)));
+
+    def allChat(self, source, msg):
+        self.sendCMD(self.CMD_ALLCHAT,source,"{0}".format(msg ))
+
+    def whisper(self,source,dest,msg):
+        length=len(dest)
+        self.sendCMD(self.CMD_WHISPER,source,"{0}{1}{2}".format(chr(length),dest,msg))
+
+    def dumpUsers(self,source):
+        self.sendCMD(self.CMD_USER_DUMP, source)
 
 def main():
     s = TestSim();
@@ -143,11 +157,16 @@ def main():
     s.addChannel(s.GENERAL_CHANNEL);
     #s.addChannel(s.ROUTING_CHANNEL);
 
-    s.runTime(100);
-    s.setTestServer(1);
-    s.runTime(30);
-    s.setTestClient(4);#client addr, serv addr, serv port, msgsize
-    s.runTime(1000);
+
+
+    s.runTime(5);
+    #s.setTestServer(1);
+    s.allChat(1, "hihihi\n");
+    
+    s.runTime(5);
+    #s.setTestClient(4);#client addr, serv addr, serv port, msgsize
+    s.whisper(1,"butts", "hi\n");
+    s.runTime(5);
     # s.ping(1,9,"hello");
     # s.runTime(20);
 

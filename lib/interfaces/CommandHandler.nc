@@ -9,4 +9,7 @@ interface CommandHandler{
    event void setTestClient(uint16_t destination, uint16_t destport,uint16_t messagesize);
    event void setAppServer();
    event void setAppClient();
+   event void allChat(char* msg);
+   event void whisper(uint8_t len, char* msg);
+   event void printUsers();
 }

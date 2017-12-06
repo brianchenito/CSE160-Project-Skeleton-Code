@@ -458,6 +458,26 @@ implementation{
 
 
    }
+   event void CommandHandler.printUsers(){
+
+
+   }
+   event void CommandHandler.allChat(char*msg){
+      dbg(GENERAL_CHANNEL, msg);
+   }
+   event void CommandHandler.whisper(uint8_t len, char * msg){
+      int i;
+      char target[200];
+
+      char* message=msg+len+1;
+      strncpy(target,message,0);
+      
+      target[i]='\0';
+      dbg(GENERAL_CHANNEL, "len %d\n",len);
+      dbg(GENERAL_CHANNEL, message);
+      dbg(GENERAL_CHANNEL, "user %s\n",target);
+   }
+
 
    event void CommandHandler.ping(uint16_t destination, uint8_t *payload){
       dbg(GENERAL_CHANNEL, "PING EVENT \n");
