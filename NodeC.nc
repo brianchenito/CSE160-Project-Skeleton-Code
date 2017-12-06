@@ -47,6 +47,9 @@ implementation {
     components new TimerMilliC() as myTimerC; 
     Node.periodicTimer -> myTimerC;
 
+    components new TimerMilliC() as retryTimerC;
+    Node.retryTimer->retryTimerC;
+
     components new ListC(pathnode,100) as conf;
     Node.confirmed -> conf;
 

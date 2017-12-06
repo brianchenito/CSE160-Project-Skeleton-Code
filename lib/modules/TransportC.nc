@@ -14,7 +14,11 @@ implementation
 
   components new HashmapC(socket_store_t,MAX_NUM_OF_SOCKETS) as sockets;
   components new HashmapC(socket_t,MAX_NUM_OF_SOCKETS) as boundports;
+  components new HashmapC(socket_addr_t,MAX_NUM_OF_SOCKETS) as activeconnectionrequests;
+
+
   TransportP.boundports->boundports;
   TransportP.sockets->sockets;
+  TransportP.activeconnectionrequests->activeconnectionrequests;
 
 }

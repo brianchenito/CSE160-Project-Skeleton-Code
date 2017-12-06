@@ -30,8 +30,13 @@ interface Transport{
 
     /**
      * retrieve port from socket id
-      */
+     */
     command socket_port_t getPort(socket_t sock);
+
+    /**
+     * retrieve state from socket id
+     */
+    command enum socket_state getState(socket_t fd);
 
     /**
      * Switch socket to establised with target address 
@@ -74,7 +79,7 @@ interface Transport{
     *    a destination associated with the destination address and port.
     *    if not return a null socket.
     */
-   command socket_t accept(socket_t fd);
+   command socket_t accept(socket_t fd, socket_addr_t clientaddr);
 
    /**
     * Write to the socket from a buffer. This data will eventually be

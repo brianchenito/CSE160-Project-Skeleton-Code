@@ -10,6 +10,7 @@ generic module TransportP()
     provides interface Transport;
     uses interface Hashmap<socket_store_t> as sockets;
     uses interface Hashmap<socket_t> as boundports; 
+    uses interface Hashmap<socket_addr_t> as activeconnectionrequests;
 }
 implementation
 {
@@ -19,10 +20,11 @@ implementation
     void start();
     socket_t getSock(socket_port_t port);
     socket_port_t getPort(socket_t sock);
+    enum socket_state  getState(socket_t fd);
     error_t establish(socket_t fd, socket_addr_t dest);
     socket_t socket();
     error_t bind(socket_t fd, socket_addr_t addr);
-    socket_t accept(socket_t fd);
+    socket_t accept(socket_t fd,socket_addr_t clientaddr);
     uint16_t write(socket_t fd, uint8_t *buff, uint16_t bufflen);
     error_t receive(pack* package);
     uint16_t read(socket_t fd, uint8_t *buff, uint16_t bufflen);
@@ -55,6 +57,15 @@ implementation
         return NULL;
     }
 
+    command enum socket_state Transport.getState(socket_t fd)
+    {
+        if(call sockets.contains(fd))
+        {
+            return (call sockets.get(fd)).state;
+        }
+        return INVALID;
+    }
+
     command error_t Transport.establish(socket_t fd, socket_addr_t dest)
     {
         socket_store_t tempstore;
@@ -68,11 +79,11 @@ implementation
         {
             tempstore.state=ESTABLISHED;
             tempstore.dest=dest;
-
             call sockets.insert(fd,tempstore);
-             dbg(GENERAL_CHANNEL,"---- SUCESSFUL ESTABLISHMENT WITH NODE %d ON PORT %d\n",dest.addr,dest.port);
+             dbg(GENERAL_CHANNEL,"---- SUCESSFUL ESTABLISHMENT WITH NODE %d ON PORT %d----\n",dest.addr,dest.port);
             return SUCCESS;
         }
+        dbg(GENERAL_CHANNEL,"---- FAILURE TO ESTABLISH WITH NODE %d ON PORT %d(PORT %d CURR IN STATE %d )\n",dest.addr,dest.port,tempstore.src,tempstore.state);
         return FAIL;
 
     }
@@ -121,19 +132,26 @@ implementation
 
         call sockets.insert(fd, tempstore);
         call boundports.insert(addr.port, fd);
+
         dbg(GENERAL_CHANNEL,"Socket %d on addr %d set port to %d\n",fd,nextAddr.addr,(call sockets.get(fd)).src);
         return SUCCESS;
     }
-    command socket_t Transport.accept(socket_t fd)
+    command socket_t Transport.accept(socket_t fd,socket_addr_t clientaddr)
     {
         socket_store_t listsock;
         socket_t newsock;
         if(call sockets.contains(fd))
         {
+            if(call activeconnectionrequests.contains(clientaddr.addr))
+            {
+                //dbg(GENERAL_CHANNEL,"Client already has a pending or active connection with Server\n");
+                return NULL;
+            }
             listsock=call sockets.get(fd);
             //dbg(GENERAL_CHANNEL,"socket %d contains target port,%d\n",fd,(call sockets.get(fd)).src);
             if(listsock.state==LISTEN)
                 {
+
                     dbg(GENERAL_CHANNEL,"LISTENER CONFIRMED, GENERATING NEW SOCKET FOR CONNECTION\n");
                     newsock=call Transport.socket();
                     if(newsock==NULL){
@@ -143,6 +161,7 @@ implementation
                     call Transport.bind(newsock,nextAddr);
                     listsock=call sockets.get(newsock);
                     listsock.state=SYN_RCVD;
+                    call activeconnectionrequests.insert(clientaddr.addr,clientaddr);
                     call sockets.insert(newsock,listsock);
                     dbg(GENERAL_CHANNEL,"sock %d set to state SYN_RCVD\n",newsock);
                     nextAddr.port+=1;
@@ -169,7 +188,7 @@ implementation
     {
         socket_store_t tempstore;
         tcppayload payload;
-        dbg(GENERAL_CHANNEL,"socket %d switching to SYN_SENT\n",fd);
+        dbg(GENERAL_CHANNEL,"socket %d  at port %d switching to SYN_SENT\n",fd, call Transport.getPort(fd));
         tempstore=(call sockets.get(fd));
         tempstore.state=SYN_SENT;
         call sockets.insert(fd, tempstore);
