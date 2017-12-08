@@ -136,7 +136,7 @@ class TestSim:
 def main():
     s = TestSim();
     s.runTime(10);
-    s.loadTopo("long_line.topo");
+    s.loadTopo("pizza.topo");
     s.loadNoise("meyer-heavy.txt");
     s.bootAll();
     s.addChannel(s.COMMAND_CHANNEL);
@@ -147,7 +147,7 @@ def main():
     s.setTestServer(1);
     s.runTime(30);
     s.setTestClient(4);#client addr, serv addr, serv port, msgsize
-    s.runTime(500);
+    s.runTime(1000);
     # s.ping(1,9,"hello");
     # s.runTime(20);
 

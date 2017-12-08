@@ -16,10 +16,12 @@ implementation
 {
     socket_t nextSock;
     socket_addr_t nextAddr;
+    socket_store_t INVALIDSTORE;
 
     void start();
     socket_t getSock(socket_port_t port);
     socket_port_t getPort(socket_t sock);
+    socket_store_t getSockInfo(socket_port_t port);
     enum socket_state  getState(socket_t fd);
     error_t establish(socket_t fd, socket_addr_t dest);
     socket_t socket();
@@ -39,6 +41,7 @@ implementation
         nextSock=1;
         nextAddr.port=ROOT_SOCKET_PORT;
         nextAddr.addr=TOS_NODE_ID;
+        INVALIDSTORE.state=INVALID;
     }
     command socket_t Transport.getSock(socket_port_t port)
     {
@@ -48,6 +51,16 @@ implementation
         }
         return NULL;
     }
+
+    command socket_store_t Transport.getSockInfo(socket_port_t port)
+    {
+        if(call sockets.contains(call boundports.get(port)))
+        {
+            return (call sockets.get(call boundports.get(port)));
+        }
+        return INVALIDSTORE;
+    }
+
     command socket_port_t Transport.getPort(socket_t sock)
     {
         if(call sockets.contains(sock))
@@ -69,6 +82,11 @@ implementation
     command error_t Transport.establish(socket_t fd, socket_addr_t dest)
     {
         socket_store_t tempstore;
+        if(!call sockets.contains(fd))
+        {
+             dbg(GENERAL_CHANNEL,"error, no sock availible with specified id %d\n",fd);
+             return FAIL;
+        }
         tempstore=call sockets.get(fd);
         if(tempstore.state==ESTABLISHED)
         {
@@ -144,7 +162,7 @@ implementation
         {
             if(call activeconnectionrequests.contains(clientaddr.addr))
             {
-                //dbg(GENERAL_CHANNEL,"Client already has a pending or active connection with Server\n");
+                dbg(GENERAL_CHANNEL,"Client already has a pending or active connection with Server\n");
                 return NULL;
             }
             listsock=call sockets.get(fd);
@@ -161,6 +179,7 @@ implementation
                     call Transport.bind(newsock,nextAddr);
                     listsock=call sockets.get(newsock);
                     listsock.state=SYN_RCVD;
+                    listsock.dest=clientaddr;
                     call activeconnectionrequests.insert(clientaddr.addr,clientaddr);
                     call sockets.insert(newsock,listsock);
                     dbg(GENERAL_CHANNEL,"sock %d set to state SYN_RCVD\n",newsock);
@@ -201,7 +220,16 @@ implementation
     }
     command error_t Transport.close(socket_t fd)
     {
-        return FAIL;
+        socket_store_t tempstore;
+        if(!call sockets.contains(fd)) return FAIL;
+        tempstore=(call sockets.get(fd));
+        if(tempstore.state==CLOSED)return SUCCESS;
+        
+        tempstore.state=CLOSED;
+        call sockets.insert(fd,tempstore);
+        call boundports.remove(tempstore.dest.port);
+        dbg(GENERAL_CHANNEL,"-------- succesfully closed out connection to %d on port %d\n",tempstore.dest.addr,tempstore.dest.port);
+        return SUCCESS;
     }
     command error_t Transport.release(socket_t fd)
     {

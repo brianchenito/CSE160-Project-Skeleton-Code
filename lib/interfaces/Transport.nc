@@ -33,6 +33,9 @@ interface Transport{
      */
     command socket_port_t getPort(socket_t sock);
 
+
+    command socket_store_t getSockInfo(socket_port_t port);
+
     /**
      * retrieve state from socket id
      */

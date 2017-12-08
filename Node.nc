@@ -17,8 +17,11 @@
 #include "includes/pathnode.h"
 #include "includes/tcppayload.h"
 
-enum{REFRESHINTERVAL=50000};
-enum{RETRANSMITINTERVAL=500000};
+enum{
+   REFRESHINTERVAL=5000000,
+   RETRANSMITINTERVAL=500000,
+   CLOSEACK=65535
+};
 
 module Node{
    uses interface Boot;
@@ -67,6 +70,8 @@ implementation{
    uint16_t maxval;// client vals to send
    uint16_t tenttarget; // target node
    bool datasend;
+   bool toclose;
+   bool closed;
    uint16_t window; // sizeof send window
    tcppayload tentpayload;// tentative client send payload, sent on retry
 
@@ -77,6 +82,9 @@ implementation{
       acktrack=0;
       succsend=65535;
       datasend=FALSE;
+      toclose=FALSE;
+      closed=FALSE;
+
       window=5;
       emphport=ROOT_SOCKET_PORT;
       findNeighbors();
@@ -100,6 +108,7 @@ implementation{
       uint16_t next;
       tcppayload* tcpunpack;
       tcppayload sendtcp;
+      socket_store_t sockdata;
       socket_t socketid;
       socket_store_t socketinfo;
       socket_addr_t sockaddr;
@@ -122,15 +131,17 @@ implementation{
             {
                //dbg(GENERAL_CHANNEL, "TCP PACK RECIEVED BY DESTINATION\n");
                tcpunpack=myMsg->payload;
+               if (closed)break;
                   //call Transport.receive(myMsg);
                switch(tcpunpack->flag){
                   case FLAG_SYN:
+                     if(toclose||closed)break;
                      dbg(GENERAL_CHANNEL, "RECIEVED SYN, CHECKING FOR LISTENER SOCK \n");
                      sockaddr.addr=myMsg->src;
                      sockaddr.port=tcpunpack->sourceport;
                      socketid=call Transport.accept(call Transport.getSock(tcpunpack->destport),sockaddr );
                      if (socketid ==NULL){
-                        //dbg(GENERAL_CHANNEL, "ERROR,NO LISTENER AT SPECIFIED PORT \n");
+                        dbg(GENERAL_CHANNEL, "ERROR,NO LISTENER AT SPECIFIED PORT: %d \n", tcpunpack->destport);
                         return msg;
                      }
                      dbg(GENERAL_CHANNEL, "SERVER ACCEPTED, FIRING BACK SYN ACK WITH SYNC DATA \n");
@@ -154,18 +165,21 @@ implementation{
 
                      break;
                   case FLAG_SYN_ACK:
+                     if(toclose)break;
                      dbg(GENERAL_CHANNEL, "RECIEVED SYN_ACK, CHECKING FOR AND CONFIGURING CLIENT CONNECT \n");
-                     socketid=call Transport.getSock(tcpunpack->destport);
-                     if(socketid==NULL){
+                     sockdata=call Transport.getSockInfo(tcpunpack->destport);
+                     if(sockdata.state!= SYN_SENT){
                         dbg(GENERAL_CHANNEL, "INVALID SYN_ACK RECIEVED, IGNORING \n");
                         break;
                      }
                      // stop retry
-                     call retryTimer.stop();
+                     
                      succseq=tcpunpack->seq;
                      sockaddr.port=tcpunpack->sourceport;
                      sockaddr.addr=myMsg->src;
-                     call Transport.establish(socketid,sockaddr);
+                     socketid=call Transport.getSock(tcpunpack->destport);
+                     if((call Transport.establish(socketid,sockaddr))==FAIL)break;
+                     call retryTimer.stop();
                      dbg(GENERAL_CHANNEL, "CONNECTED TO NODE %d AT PORT %d, FIRING BACK ACK \n", myMsg->src, tcpunpack->sourceport);
                      sendtcp.flag=FLAG_ACK;
 
@@ -186,6 +200,12 @@ implementation{
 
                      break;
                   case FLAG_ACK:
+                     if(toclose&&tcpunpack->ack==CLOSEACK ){
+                        call retryTimer.stop();
+                        dbg(GENERAL_CHANNEL, "CLOSING CONNECTION ON PORT %d TO NODE %d ON PORT %d\n",tcpunpack->destport,myMsg->src, tcpunpack->sourceport);
+                        call Transport.close(call Transport.getSock(tcpunpack->destport)); /////////
+                        closed=TRUE;
+                     }
                      //dbg(GENERAL_CHANNEL, "RECIEVED ACK \n");
                      socketid=call Transport.getSock(tcpunpack->sourceport);
                      
@@ -221,24 +241,29 @@ implementation{
                         break;
                      }
                      if(socketid==NULL){
-                        dbg(GENERAL_CHANNEL, "INVALID ACK RECIEVED, IGNORING \n");
+                        dbg(GENERAL_CHANNEL, "INVALID ACK RECIEVED FROM %d, PORT %d, IGNORING \n",myMsg->src,tcpunpack->sourceport);
                         break;
                      }
-                     else if(tcpunpack->ack==(succsend+1)){
+                     else if(tcpunpack->ack==(succsend+1)&& tcpunpack->ack!=CLOSEACK){
                         call retryTimer.stop();
                         succsend++;
                         succseq=tcpunpack->seq;
                         dbg(GENERAL_CHANNEL, "---- RECIEVED INORDER ACK %d ----\n",tcpunpack->ack);
                         if(tentsend<maxval)
                         {
-                           tentpayload->flag=FLAG_FRAME;
+                           sendtcp.flag=FLAG_FRAME;
                            tentsend++;
                            tentseq++;
-                           tentpayload.data=tentsend;
-                           tentpayload.seq=tentseq;
-                           tentpayload.ack=succsend;
+                           sendtcp.sourceport=tcpunpack->destport;
+                           sendtcp.destport=tcpunpack->sourceport;
+                           sendtcp.data=tentsend;
+                           sendtcp.seq=tentseq;
+                           sendtcp.ack=succsend;
+                           tentpayload=sendtcp;
+                           tenttarget=myMsg->src;
+                           next=nextHop(myMsg->src);
                            dbg(GENERAL_CHANNEL, "TRANSMITTING DATA %d\n",tentsend);
-                           makePack(&sendPackage, TOS_NODE_ID,tenttarget,0,PROTOCOL_TCP,0,(uint8_t*)&tentpayload,PACKET_MAX_PAYLOAD_SIZE );
+                           makePack(&sendPackage, TOS_NODE_ID,myMsg->src,0,PROTOCOL_TCP,0,(uint8_t*)&sendtcp,PACKET_MAX_PAYLOAD_SIZE );
                            call Sender.send(sendPackage,next);
 
                            call retryTimer.startOneShot(RETRANSMITINTERVAL);
@@ -247,7 +272,20 @@ implementation{
                         {
                            dbg(GENERAL_CHANNEL, "---- RECIEVED ALL ACKS, READY TO CLOSE ----\n");
                            call retryTimer.stop();
-                           tentpayload.flag= FLAG_FIN;
+                           toclose=TRUE;
+                           sendtcp.sourceport=tcpunpack->destport;
+                           sendtcp.destport=tcpunpack->sourceport;
+                           sendtcp.flag=FLAG_FIN;
+
+                           tentpayload=sendtcp;
+                           tenttarget=myMsg->src;
+                           next=nextHop(myMsg->src);
+
+                           dbg(GENERAL_CHANNEL, "TRANSMITTING FIN \n");
+                           makePack(&sendPackage, TOS_NODE_ID,myMsg->src,0,PROTOCOL_TCP,0,(uint8_t*)&sendtcp,PACKET_MAX_PAYLOAD_SIZE );
+                           call Sender.send(sendPackage,next);
+                           call retryTimer.startOneShot(RETRANSMITINTERVAL);
+
 
 
                         }
@@ -276,9 +314,9 @@ implementation{
                         call retryTimer.startOneShot(0);
 
                      }
-                     else
+                     else if(succsend<maxval)
                      {
-                        //dbg(GENERAL_CHANNEL, "RECIEVED OUT OF ORDER ACK %d \n",tcpunpack->ack);
+                        dbg(GENERAL_CHANNEL, "RECIEVED OUT OF ORDER ACK,%d, expected  %d \n",tcpunpack->ack, succsend+1);
                         if(tcpunpack->ack>succsend)succsend=tcpunpack->ack;
                         if(tcpunpack->ack<maxval)call retryTimer.startOneShot(0);
                         
@@ -299,14 +337,18 @@ implementation{
                         sendtcp.ack=acktrack;
                         sendtcp.windowsize=window;
                         sendtcp.data=0;
-                        dbg(GENERAL_CHANNEL, "FIRING BACK ACK %d\n", acktrack);
+                        tentpayload=sendtcp;
+                        tenttarget=myMsg->src;
+                        dbg(GENERAL_CHANNEL, "FIRING BACK ACK%d, port %d \n", acktrack,sendtcp.sourceport);
 
                         next=nextHop(myMsg->src);
                         makePack(&sendPackage, TOS_NODE_ID,myMsg->src,0,PROTOCOL_TCP,0,(uint8_t*)&sendtcp,PACKET_MAX_PAYLOAD_SIZE );
                         call Sender.send(sendPackage,next);
+                        call retryTimer.startOneShot(RETRANSMITINTERVAL);
+
                      }
                      else{
-                        //dbg(GENERAL_CHANNEL, "RECIEVED OUT OF ORDER FRAME WITH DATA %d  (expected seq: %d, actual: %d)\n", tcpunpack->data,serverseq+1,tcpunpack->seq);
+                        dbg(GENERAL_CHANNEL, "RECIEVED OUT OF ORDER FRAME WITH DATA %d  (expected seq: %d, actual: %d)\n", tcpunpack->data,serverseq+1,tcpunpack->seq);
                         sendtcp.flag=FLAG_ACK;
                         sendtcp.sourceport=tcpunpack->destport;
                         sendtcp.destport=tcpunpack->sourceport;
@@ -314,7 +356,7 @@ implementation{
                         sendtcp.ack=acktrack;
                         sendtcp.windowsize=window;
                         sendtcp.data=0;
-                        //dbg(GENERAL_CHANNEL, "FIRING BACK ACK %d\n", acktrack);
+                        dbg(GENERAL_CHANNEL, "FIRING BACK ACK OF MOST RECENT CONFIRM %d, port%d \n", acktrack,sendtcp.sourceport);
 
                         next=nextHop(myMsg->src);
                         makePack(&sendPackage, TOS_NODE_ID,myMsg->src,0,PROTOCOL_TCP,0,(uint8_t*)&sendtcp,PACKET_MAX_PAYLOAD_SIZE );
@@ -322,10 +364,38 @@ implementation{
                      }
                      break;
                   case FLAG_FIN:
-                     dbg(GENERAL_CHANNEL, "RECIEVED FIN \n");
+                     call retryTimer.stop();
+                     dbg(GENERAL_CHANNEL, "RECIEVED FIN, FIRING BACK FIN ACK \n");
+                     sendtcp.flag=FLAG_FIN_ACK;
+                     sendtcp.sourceport=tcpunpack->destport;
+                     sendtcp.destport=tcpunpack->sourceport;
+
+                     next=nextHop(myMsg->src);
+                     makePack(&sendPackage, TOS_NODE_ID,myMsg->src,0,PROTOCOL_TCP,0,(uint8_t*)&sendtcp,PACKET_MAX_PAYLOAD_SIZE );
+                     call Sender.send(sendPackage,next);
+
+                     dbg(GENERAL_CHANNEL, "CLOSING CONNECTION ON PORT %d TO NODE %d ON PORT %d\n",tcpunpack->destport,myMsg->src, tcpunpack->sourceport);
+                     call Transport.close(call Transport.getSock(tcpunpack->destport));
+                     closed=TRUE;
+
+
                      break;
                   case FLAG_FIN_ACK:
-                     dbg(GENERAL_CHANNEL, "RECIEVED FIN_ACK \n");
+                     call retryTimer.stop();
+                     dbg(GENERAL_CHANNEL, "RECIEVED FIN_ACK, FIRING FINAL ACK \n");
+                     sendtcp.flag=FLAG_ACK;
+                     sendtcp.sourceport=tcpunpack->destport;
+                     sendtcp.destport=tcpunpack->sourceport;
+                     sendtcp.ack=CLOSEACK;
+                     tentpayload=sendtcp;
+                     tenttarget=myMsg->src;
+
+                     next=nextHop(myMsg->src);
+                     makePack(&sendPackage, TOS_NODE_ID,myMsg->src,0,PROTOCOL_TCP,0,(uint8_t*)&sendtcp,PACKET_MAX_PAYLOAD_SIZE );
+                     call Sender.send(sendPackage,next);
+                     dbg(GENERAL_CHANNEL, "CLOSING CONNECTION ON PORT %d TO NODE %d ON PORT %d\n",tcpunpack->destport,myMsg->src, tcpunpack->sourceport);
+                     call Transport.close(call Transport.getSock(tcpunpack->destport));
+                     closed=TRUE;
                      break;
                   default:
                          dbg(GENERAL_CHANNEL, "RECIEVED INVALID FLAG\n");
