@@ -18,6 +18,7 @@ class TestSim:
     CMD_ALLCHAT=7
     CMD_WHISPER=8
     CMD_USER_DUMP=10
+    CMD_USER_REGISTER=11
 
     # CHANNELS - see includes/channels.h
     COMMAND_CHANNEL="command";
@@ -147,6 +148,9 @@ class TestSim:
     def dumpUsers(self,source):
         self.sendCMD(self.CMD_USER_DUMP, source)
 
+    def RegisterUser(self, source, username):
+        self.sendCMD(self.CMD_USER_REGISTER, source,"{0}".format(username ) )
+
 def main():
     s = TestSim();
     s.runTime(10);
@@ -155,18 +159,24 @@ def main():
     s.bootAll();
     s.addChannel(s.COMMAND_CHANNEL);
     s.addChannel(s.GENERAL_CHANNEL);
-    #s.addChannel(s.ROUTING_CHANNEL);
+    #s.addChannel(s.TRANSPORT_CHANNEL);
 
 
 
     s.runTime(5);
-    #s.setTestServer(1);
-    s.allChat(1, "hihihi\n");
+    s.setTestServer(1);
+    s.runTime(5);
+
+    s.RegisterUser(2, "butts")
+    s.runTime(5)
+    #s.RegisterUser(4,"mcbutt")
+    s.runTime(40)
+    #s.allChat(2, "hihihi\n");
     
-    s.runTime(5);
+    s.runTime(40);
     #s.setTestClient(4);#client addr, serv addr, serv port, msgsize
-    s.whisper(1,"butts", "hi\n");
-    s.runTime(5);
+    #s.whisper(2,"mcbutt", "hello, world");
+    s.runTime(40);
     # s.ping(1,9,"hello");
     # s.runTime(20);
 

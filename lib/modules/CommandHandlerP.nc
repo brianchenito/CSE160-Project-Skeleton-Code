@@ -88,6 +88,10 @@ implementation{
             case CMD_USER_DUMP:
                 dbg(COMMAND_CHANNEL, "Command Type: Username Dump\n");
                 break;
+            case CMD_USER_REGISTER:
+                dbg(COMMAND_CHANNEL, "Command Type: Register\n");
+                signal CommandHandler.registerUser(buff);
+                break;
 
             default:
                 dbg(COMMAND_CHANNEL, "CMD_ERROR: \"%d\" does not match any known commands.\n", msg->id);

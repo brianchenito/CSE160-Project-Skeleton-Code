@@ -12,4 +12,5 @@ interface CommandHandler{
    event void allChat(char* msg);
    event void whisper(uint8_t len, char* msg);
    event void printUsers();
+   event void registerUser(char* username);
 }
